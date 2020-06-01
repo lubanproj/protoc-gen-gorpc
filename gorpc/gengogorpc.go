@@ -39,6 +39,7 @@ func GenerateFile(gen *protogen.Plugin, file *protogen.File) *protogen.Generated
 
 // GenerateFileContent generates the gRPC service definitions, excluding the package statement.
 func GenerateFileContent(gen *protogen.Plugin, file *protogen.File, g *protogen.GeneratedFile) {
+
 	if len(file.Services) == 0 {
 		return
 	}

@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	pb "github.com/golang/protobuf/protoc-gen-go/descriptor"
-	"github.com/golang/protobuf/protoc-gen-go/generator"
+	pb "github.com/lubanproj/protoc-gen-gorpc/descriptor"
+	"github.com/lubanproj/protoc-gen-gorpc/generator"
 )
 
 // generatedCodeVersion indicates a version of the generated code.

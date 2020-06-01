@@ -18,6 +18,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/lubanproj/protoc-gen-gorpc/generator/internal/remap"
 	"go/ast"
 	"go/build"
 	"go/parser"
@@ -32,18 +33,18 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/protoc-gen-go/generator/internal/remap"
+	"github.com/lubanproj/protoc-gen-gorpc/descriptor"
 
-	"github.com/golang/protobuf/protoc-gen-go/descriptor"
-	plugin "github.com/golang/protobuf/protoc-gen-go/plugin"
+	"github.com/golang/protobuf/proto"
+
+	plugin "github.com/lubanproj/protoc-gen-gorpc/plugin"
 )
 
 func init() {
-	fmt.Fprint(os.Stderr,
-		"WARNING: Package \"github.com/golang/protobuf/protoc-gen-go/generator\" is deprecated.\n"+
-			"\tA future release of golang/protobuf will delete this package,\n"+
-			"\twhich has long been excluded from the compatibility promise.\n\n")
+	//fmt.Fprint(os.Stderr,
+	//	"WARNING: Package \"github.com/golang/protobuf/protoc-gen-go/generator\" is deprecated.\n"+
+	//		"\tA future release of golang/protobuf will delete this package,\n"+
+	//		"\twhich has long been excluded from the compatibility promise.\n\n")
 }
 
 // generatedCodeVersion indicates a version of the generated code.
