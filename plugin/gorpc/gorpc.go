@@ -2,8 +2,6 @@ package gorpc
 
 import (
 	"fmt"
-	"github.com/micro/go-micro/v2/client"
-	"github.com/micro/go-micro/v2/util/file"
 	"strings"
 
 	pb "github.com/golang/protobuf/protoc-gen-go/descriptor"
