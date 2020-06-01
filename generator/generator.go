@@ -1,14 +1,39 @@
-// Copyright 2010 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// Go support for Protocol Buffers - Google's data interchange format
+//
+// Copyright 2010 The Go Authors.  All rights reserved.
+// https://github.com/golang/protobuf
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are
+// met:
+//
+//     * Redistributions of source code must retain the above copyright
+// notice, this list of conditions and the following disclaimer.
+//     * Redistributions in binary form must reproduce the above
+// copyright notice, this list of conditions and the following disclaimer
+// in the documentation and/or other materials provided with the
+// distribution.
+//     * Neither the name of Google Inc. nor the names of its
+// contributors may be used to endorse or promote products derived from
+// this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// Package generator is deprecated.
-//
-// This package is excluded from the Go protocol buffer compatibility guarantee
-// and may be deleted at some point in the future.
-//
-// Deprecated: Use the "google.golang.org/protobuf/compiler/protogen" package
-// instead to write protoc plugins in Go.
+/*
+	The code generator for the plugin for the Google protocol buffer compiler.
+	It generates Go code from the protocol buffer description files read by the
+	main routine.
+*/
 package generator
 
 import (
@@ -18,7 +43,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"github.com/lubanproj/protoc-gen-gorpc/generator/internal/remap"
 	"go/ast"
 	"go/build"
 	"go/parser"
@@ -33,19 +57,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/lubanproj/protoc-gen-gorpc/descriptor"
-
 	"github.com/golang/protobuf/proto"
-
-	plugin "github.com/lubanproj/protoc-gen-gorpc/plugin"
+	"github.com/golang/protobuf/protoc-gen-go/descriptor"
+	plugin "github.com/golang/protobuf/protoc-gen-go/plugin"
 )
-
-func init() {
-	//fmt.Fprint(os.Stderr,
-	//	"WARNING: Package \"github.com/golang/protobuf/protoc-gen-go/generator\" is deprecated.\n"+
-	//		"\tA future release of golang/protobuf will delete this package,\n"+
-	//		"\twhich has long been excluded from the compatibility promise.\n\n")
-}
 
 // generatedCodeVersion indicates a version of the generated code.
 // It is incremented whenever an incompatibility between the generated code and
@@ -66,7 +81,7 @@ type Plugin interface {
 	Generate(file *FileDescriptor)
 	// GenerateImports produces the import declarations for this file.
 	// It is called after Generate.
-	GenerateImports(file *FileDescriptor)
+	GenerateImports(file *FileDescriptor, imports map[GoImportPath]GoPackageName)
 }
 
 var plugins []Plugin
@@ -297,7 +312,7 @@ func (d *FileDescriptor) goFileName(pathType pathType) string {
 	if ext := path.Ext(name); ext == ".proto" || ext == ".protodevel" {
 		name = name[:len(name)-len(ext)]
 	}
-	name += ".pb.go"
+	name += ".pb.micro.go"
 
 	if pathType == pathTypeSourceRelative {
 		return name
@@ -409,8 +424,6 @@ type Generator struct {
 	indent           string
 	pathType         pathType // How to generate output filenames.
 	writeOutput      bool
-	annotateCode     bool                                       // whether to store annotations
-	annotations      []*descriptor.GeneratedCodeInfo_Annotation // annotations to store
 }
 
 type pathType int
@@ -432,14 +445,14 @@ func New() *Generator {
 // Error reports a problem, including an error, and exits the program.
 func (g *Generator) Error(err error, msgs ...string) {
 	s := strings.Join(msgs, " ") + ":" + err.Error()
-	log.Print("protoc-gen-go: error:", s)
+	log.Print("protoc-gen-micro: error:", s)
 	os.Exit(1)
 }
 
 // Fail reports a problem and exits the program.
 func (g *Generator) Fail(msgs ...string) {
 	s := strings.Join(msgs, " ")
-	log.Print("protoc-gen-go: error:", s)
+	log.Print("protoc-gen-micro: error:", s)
 	os.Exit(1)
 }
 
@@ -475,10 +488,6 @@ func (g *Generator) CommandLineParameters(parameter string) {
 			}
 		case "plugins":
 			pluginList = v
-		case "annotate_code":
-			if v == "true" {
-				g.annotateCode = true
-			}
 		default:
 			if len(k) > 0 && k[0] == 'M' {
 				g.ImportMap[k[1:]] = v
@@ -487,7 +496,9 @@ func (g *Generator) CommandLineParameters(parameter string) {
 	}
 	if pluginList != "" {
 		// Amend the set of plugins.
-		enabled := make(map[string]bool)
+		enabled := map[string]bool{
+			"micro": true,
+		}
 		for _, name := range strings.Split(pluginList, "+") {
 			enabled[name] = true
 		}
@@ -1014,26 +1025,8 @@ func (g *Generator) P(str ...interface{}) {
 	for _, v := range str {
 		switch v := v.(type) {
 		case *AnnotatedAtoms:
-			begin := int32(g.Len())
 			for _, v := range v.atoms {
 				g.printAtom(v)
-			}
-			if g.annotateCode {
-				end := int32(g.Len())
-				var path []int32
-				for _, token := range strings.Split(v.path, ",") {
-					val, err := strconv.ParseInt(token, 10, 32)
-					if err != nil {
-						g.Fail("could not parse proto AST path: ", err.Error())
-					}
-					path = append(path, int32(val))
-				}
-				g.annotations = append(g.annotations, &descriptor.GeneratedCodeInfo_Annotation{
-					Path:       path,
-					SourceFile: &v.source,
-					Begin:      &begin,
-					End:        &end,
-				})
 			}
 		default:
 			g.printAtom(v)
@@ -1073,7 +1066,6 @@ func (g *Generator) GenerateAllFiles() {
 	}
 	for _, file := range g.allFiles {
 		g.Reset()
-		g.annotations = nil
 		g.writeOutput = genFileMap[file]
 		g.generate(file)
 		if !g.writeOutput {
@@ -1084,14 +1076,6 @@ func (g *Generator) GenerateAllFiles() {
 			Name:    proto.String(fname),
 			Content: proto.String(g.String()),
 		})
-		if g.annotateCode {
-			// Store the generated code annotations in text, as the protoc plugin protocol requires that
-			// strings contain valid UTF-8.
-			g.Response.File = append(g.Response.File, &plugin.CodeGeneratorResponse_File{
-				Name:    proto.String(file.goFileName(g.pathType) + ".meta"),
-				Content: proto.String(proto.CompactTextString(&descriptor.GeneratedCodeInfo{Annotation: g.annotations})),
-			})
-		}
 	}
 }
 
@@ -1124,50 +1108,25 @@ func (g *Generator) generate(file *FileDescriptor) {
 	for _, td := range g.file.imp {
 		g.generateImported(td)
 	}
-	for _, enum := range g.file.enum {
-		g.generateEnum(enum)
-	}
-	for _, desc := range g.file.desc {
-		// Don't generate virtual messages for maps.
-		if desc.GetOptions().GetMapEntry() {
-			continue
-		}
-		g.generateMessage(desc)
-	}
-	for _, ext := range g.file.ext {
-		g.generateExtension(ext)
-	}
+
 	g.generateInitFunction()
-	g.generateFileDescriptor(file)
 
 	// Run the plugins before the imports so we know which imports are necessary.
 	g.runPlugins(file)
 
 	// Generate header and imports last, though they appear first in the output.
 	rem := g.Buffer
-	remAnno := g.annotations
 	g.Buffer = new(bytes.Buffer)
-	g.annotations = nil
 	g.generateHeader()
 	g.generateImports()
 	if !g.writeOutput {
 		return
-	}
-	// Adjust the offsets for annotations displaced by the header and imports.
-	for _, anno := range remAnno {
-		*anno.Begin += int32(g.Len())
-		*anno.End += int32(g.Len())
-		g.annotations = append(g.annotations, anno)
 	}
 	g.Write(rem.Bytes())
 
 	// Reformat generated code and patch annotation locations.
 	fset := token.NewFileSet()
 	original := g.Bytes()
-	if g.annotateCode {
-		// make a copy independent of g; we'll need it after Reset.
-		original = append([]byte(nil), original...)
-	}
 	fileAST, err := parser.ParseFile(fset, "", original, parser.ParseComments)
 	if err != nil {
 		// Print out the bad code with line numbers.
@@ -1186,25 +1145,11 @@ func (g *Generator) generate(file *FileDescriptor) {
 	if err != nil {
 		g.Fail("generated Go source code could not be reformatted:", err.Error())
 	}
-	if g.annotateCode {
-		m, err := remap.Compute(original, g.Bytes())
-		if err != nil {
-			g.Fail("formatted generated Go source code could not be mapped back to the original code:", err.Error())
-		}
-		for _, anno := range g.annotations {
-			new, ok := m.Find(int(*anno.Begin), int(*anno.End))
-			if !ok {
-				g.Fail("span in formatted generated Go source code could not be mapped back to the original code")
-			}
-			*anno.Begin = int32(new.Pos)
-			*anno.End = int32(new.End)
-		}
-	}
 }
 
 // Generate the header, including package definition
 func (g *Generator) generateHeader() {
-	g.P("// Code generated by protoc-gen-go. DO NOT EDIT.")
+	g.P("// Code generated by protoc-gen-micro. DO NOT EDIT.")
 	if g.file.GetOptions().GetDeprecated() {
 		g.P("// ", g.file.Name, " is a deprecated file.")
 	} else {
@@ -1309,7 +1254,7 @@ func (g *Generator) generateImports() {
 	g.P()
 	// TODO: may need to worry about uniqueness across plugins
 	for _, p := range plugins {
-		p.GenerateImports(g.file)
+		p.GenerateImports(g.file, imports)
 		g.P()
 	}
 	g.P("// Reference imports to suppress errors if they are not otherwise used.")
@@ -2229,8 +2174,7 @@ func (g *Generator) generateMessage(message *Descriptor) {
 		if oneof && oFields[*field.OneofIndex] == nil {
 			odp := message.OneofDecl[int(*field.OneofIndex)]
 			base := CamelCase(odp.GetName())
-			names := allocNames(base, "Get"+base)
-			fname, gname := names[0], names[1]
+			fname := allocNames(base)[0]
 
 			// This is the first field of a oneof we haven't seen before.
 			// Generate the union field.
@@ -2248,7 +2192,7 @@ func (g *Generator) generateMessage(message *Descriptor) {
 			of := oneofField{
 				fieldCommon: fieldCommon{
 					goName:     fname,
-					getterName: gname,
+					getterName: "Get" + fname,
 					goType:     dname,
 					tags:       tag,
 					protoName:  odp.GetName(),
