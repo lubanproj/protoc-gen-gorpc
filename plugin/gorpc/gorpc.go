@@ -100,6 +100,17 @@ func (p *gorpc) generateService(file *generator.FileDescriptor, service *pb.Serv
 		p.generateClientInterfaceCode(method)
 	}
 	p.P("}")
+	p.P(fmt.Sprintf(`
+		type %sClientProxyImpl struct {
+			client client.Client
+			opts   []client.Option
+		}
+	`, serviceName))
+	p.P(fmt.Sprintf(`
+		func New%sClientProxy(opts ...client.Option) %sClientProxy {
+			return &Greeter%sProxyImpl{client: client.DefaultClient, opts: opts}
+		}
+	`, serviceName, serviceName, serviceName))
 
 	for _, method := range service.Method {
 		p.generateClientCode(service, method, file.GetPackage())
@@ -198,7 +209,6 @@ func (p *gorpc) generateClientInterfaceCode(method *pb.MethodDescriptorProto) {
 	outType := p.typeName(method.GetOutputType())
 	p.P(fmt.Sprintf("%s(ctx context.Context, req *%s, opts ...client.Option)(*%s, error)",
 		methodName, inType, outType))
-	p.P()
 }
 
 
