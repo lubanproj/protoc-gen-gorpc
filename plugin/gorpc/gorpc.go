@@ -108,7 +108,7 @@ func (p *gorpc) generateService(file *generator.FileDescriptor, service *pb.Serv
 	`, serviceName))
 	p.P(fmt.Sprintf(`
 		func New%sClientProxy(opts ...client.Option) %sClientProxy {
-			return &Greeter%sProxyImpl{client: client.DefaultClient, opts: opts}
+			return &%sClientProxyImpl{client: client.DefaultClient, opts: opts}
 		}
 	`, serviceName, serviceName, serviceName))
 
