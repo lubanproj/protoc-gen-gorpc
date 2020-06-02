@@ -175,7 +175,7 @@ func (p *gorpc) generateClientCode(service *pb.ServiceDescriptorProto, method *p
 	inType := p.typeName(method.GetInputType())
 	outType := p.typeName(method.GetOutputType())
 	p.P(fmt.Sprintf(`// %s is server rpc method as defined
-		func (c *%sImpl) %s(ctx context.Context, req *%s, opts ...client.Option) (*%s ,error){
+		func (c *%sClientProxyImpl) %s(ctx context.Context, req *%s, opts ...client.Option) (*%s ,error){
 			
 			callopts := make([]client.Option, 0, len(c.opts)+len(opts))
 			callopts = append(callopts, c.opts...)
