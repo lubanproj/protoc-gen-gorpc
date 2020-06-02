@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/golang/protobuf/protoc-gen-go/generator"
+	"github.com/lubanproj/protoc-gen-gorpc/generator"
 
 	pb "github.com/golang/protobuf/protoc-gen-go/descriptor"
 )
